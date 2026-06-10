@@ -56,7 +56,7 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.19.0' = {
   }
 }
 
-// Static Web App (Free tier with managed functions)
+// Static Web App (Free tier — uses built-in AAD auth, no custom provider config needed)
 module staticSite 'br/public:avm/res/web/static-site:0.7.0' = {
   name: 'staticSiteDeployment'
   params: {

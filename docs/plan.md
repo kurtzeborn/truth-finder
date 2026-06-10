@@ -129,7 +129,8 @@ flowchart LR
 ```
 
 **Architecture Notes:**
-- **SWA Free Tier** — Managed functions handle all API needs (HTTP triggers only, which is all we need)
+- **SWA Free Tier** — Managed functions handle all API needs. Uses built-in AAD auth (no custom app registration needed).
+- **Built-in AAD Auth** — SWA's pre-configured `/.auth/login/aad` endpoint handles Microsoft sign-in. The `x-ms-client-principal` header provides `userDetails` (email/UPN) which the API checks against the gamekeeper allowlist in Table Storage. No custom Entra ID app registration or client secret required.
 - **Managed Functions** — Built into SWA, no separate Function App required
 - **Auth Header Forwarding** — SWA forwards `x-ms-client-principal` to managed functions automatically
 - **No CORS Required** — All traffic flows through SWA (same origin)
@@ -142,9 +143,9 @@ flowchart LR
 
 | Resource | Purpose | Estimated Monthly Cost |
 |----------|---------|------------------------|
-| **Azure Static Web Apps (Free)** | Host React SPA + managed functions | $0.00 |
+| **Azure Static Web Apps (Free)** | Host React SPA + managed functions + built-in AAD auth | $0.00 |
 | **Azure Table Storage** | All game data | < $0.01 |
-| **Entra ID** | Game Keeper authentication | $0.00 (included) |
+| **Entra ID** | Game Keeper authentication (built-in provider) | $0.00 (included) |
 | **Custom Domain (truth.k61.dev)** | Subdomain of existing domain | $0.00 (already owned) |
 
 ### Storage Calculations (per game, ~100 players, ~15 groups)
@@ -161,7 +162,7 @@ flowchart LR
 
 | Resource | When Needed | Cost |
 |----------|-------------|------|
-| **SWA Standard Tier** | If SLA or >2 custom domains needed | $9/month |
+| **SWA Standard Tier** | Custom auth providers, SLA, or >2 custom domains | $9/month |
 | **Azure SignalR** | Real-time updates upgrade | ~$50/month |
 | **Application Insights** | Monitoring/debugging | Free tier: 5 GB/month |
 
@@ -612,7 +613,7 @@ Smoke (main, after deploy):
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, React Router, React Query |
+| **Frontend** | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4 (via @tailwindcss/vite), React Router |
 | **Backend** | SWA Managed Functions (Node.js 20, TypeScript) |
 | **Database** | Azure Table Storage |
 | **Auth** | Azure Entra ID via Static Web Apps (Game Keeper only) |
@@ -632,7 +633,19 @@ Smoke (main, after deploy):
 |----------|------|----------|
 | Resource Group | `rg-one-truth-prod` | — |
 | Static Web App | `swa-one-truth-prod` | Free |
-| Storage Account | `stonetruth{uniqueString}prod` | Standard_LRS |
+| Storage Account | `st1t{uniqueString}prod` (actual: `st1tohimbuzi5bn5iprod`) | Standard_LRS |
+
+### Hostnames
+| Hostname | Purpose |
+|----------|--------|
+| `nice-ocean-0ac16bc1e.7.azurestaticapps.net` | SWA default hostname |
+| `truth.k61.dev` | Custom domain (Cloudflare CNAME, proxy disabled) |
+
+### Entra ID App Registrations
+| App | App ID | Purpose |
+|-----|--------|--------|
+| `one-truth-prod` | `2c7ff35e-5a88-4339-b134-018df6c14972` | _(unused — kept for reference if Standard tier upgrade needed)_ |
+| `github-actions-one-truth` | `0c6f23aa-2ab8-4b71-96cb-791dbe05f0d5` | GitHub Actions OIDC (CI/CD deployment) |
 
 ### Table Storage Tables
 | Table | Purpose |
@@ -644,10 +657,11 @@ Smoke (main, after deploy):
 | `gamekeepers` | Authorized email allowlist |
 
 ### SWA Configuration
-- Custom domain: truth.k61.dev
+- Custom domain: truth.k61.dev (validated, SSL provisioned)
 - Managed functions in `/api` directory
-- Auth: Entra ID provider enabled
-- Route rules: block direct access to `/api/*` auth endpoints
+- Auth: Built-in AAD provider (`/.auth/login/aad`) — no custom app registration, no `auth` block in config
+- Gamekeeper authorization: API checks `x-ms-client-principal.userDetails` (email/UPN) against `gamekeepers` table allowlist
+- Route rules in `staticwebapp.config.json`
 
 ---
 
@@ -700,14 +714,18 @@ one-truth/
 
 ## 20. Development Phases
 
-### Phase 1: Foundation
-- [ ] Initialize repo structure (web + api + infra + tests)
-- [ ] Set up Bicep infrastructure
-- [ ] Configure GitHub Actions CI/CD (lint, build, test, deploy, smoke)
-- [ ] Set up local development environment (Azurite + SWA CLI)
-- [ ] Implement Game Keeper auth (Entra ID + allowlist)
-- [ ] Create/delete game API + basic UI
-- [ ] Auth unit tests
+### Phase 1: Foundation ✅
+- [x] Initialize repo structure (web + api + infra + tests)
+- [x] Set up Bicep infrastructure
+- [x] Configure GitHub Actions CI/CD (lint, build, test, deploy, smoke)
+- [x] Set up local development environment (Azurite + SWA CLI)
+- [x] Implement Game Keeper auth (Entra ID + allowlist)
+- [x] Create/delete game API + basic UI
+- [x] Auth unit tests
+- [x] Deploy Azure infrastructure (SWA + Storage)
+- [x] Create Entra ID app registrations (SWA auth + GitHub Actions OIDC)
+- [x] Configure GitHub Actions secrets + SWA app settings
+- [x] Set up Cloudflare CNAME + SWA custom domain (truth.k61.dev)
 
 ### Phase 2: Lobby & Grouping
 - [ ] Game creation with QR code display
@@ -746,8 +764,6 @@ one-truth/
 - [ ] Speed bonus badge display
 - [ ] Responsive design polish (projector vs phone)
 - [ ] Error handling and edge cases
-- [ ] DNS setup (truth.k61.dev via Cloudflare)
-- [ ] Production deployment and smoke tests
 
 ---
 
