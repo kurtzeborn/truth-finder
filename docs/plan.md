@@ -726,14 +726,14 @@ one-truth/
 - [x] Configure GitHub Actions secrets + SWA app settings
 - [x] Set up Cloudflare CNAME + SWA custom domain (truth.k61.dev)
 
-### Phase 2: Lobby & Grouping
-- [ ] Game creation with QR code display
-- [ ] Player join flow (scan QR → enter name)
-- [ ] Player list with live count (polling)
-- [ ] Group size input + random group assignment
-- [ ] Player group assignment display
-- [ ] Game Keeper group roster view
-- [ ] Group assignment unit tests (randomization, remainders, letter assignment)
+### Phase 2: Lobby & Grouping ✅
+- [x] Game creation with QR code display
+- [x] Player join flow (scan QR → enter name)
+- [x] Player list with live count (polling)
+- [x] Group size input + random group assignment
+- [x] Player group assignment display
+- [x] Game Keeper group roster view
+- [x] Group assignment unit tests (randomization, remainders, letter assignment)
 
 ### Phase 3: Statements
 - [ ] Statement entry form (3 statements + mark the lie)
