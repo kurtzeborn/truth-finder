@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { playersTable, votesTable } from '../shared/storage.js';
 import { PlayerEntity, VoteEntity } from '../shared/types.js';
-import { validateGameId, getGameEntity, parseVotedGroups, getGroupStatements } from '../shared/helpers.js';
+import { validateGameId, getGameEntity, parseVotedGroups, getGroupStatements, getGroupVotes } from '../shared/helpers.js';
 
 // GET /api/games/:id/state?playerId=X
 app.http('getGameState', {
@@ -132,14 +132,8 @@ app.http('getGameState', {
             }
 
             // Count total votes for this group
-            let voteCount = 0;
-            const votes = votesTable.listEntities<VoteEntity>({
-              queryOptions: { filter: `PartitionKey eq '${gameId}'` },
-            });
-            for await (const v of votes) {
-              if (v.groupLetter === game.currentVotingGroup) voteCount++;
-            }
-            result.voteCount = voteCount;
+            const groupVotes = await getGroupVotes(gameId, game.currentVotingGroup);
+            result.voteCount = groupVotes.length;
           }
           break;
         }

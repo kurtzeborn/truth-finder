@@ -515,7 +515,7 @@ export function GameControlPage() {
           </div>
           <div className="flex items-center gap-4">
             <span className="px-3 py-1 rounded-full bg-gray-800 text-sm capitalize">{game.status}</span>
-            {(game.status === 'lobby' || game.status === 'results') && (
+            {game.status === 'lobby' && (
               <button
                 onClick={() => { if (confirm('Delete this game?')) deleteMutation.mutate(); }}
                 className="text-red-400 hover:text-red-300 text-sm"

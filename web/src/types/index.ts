@@ -64,11 +64,11 @@ export interface GameKeeper {
 
 // Unified game state returned by the polling endpoint
 export interface GameState {
-  game: Game;
-  player?: Player;
-  players?: Player[];
-  groupMembers?: Player[];
-  statements?: Statement[];
+  game: Pick<Game, 'id' | 'status' | 'groupSize' | 'currentVotingGroup' | 'votedGroups'>;
+  player?: Pick<Player, 'id' | 'displayName' | 'groupLetter' | 'score'>;
+  players?: Array<{ id: string; displayName: string }>;
+  groupMembers?: Array<{ id: string; displayName: string }>;
+  statements?: Array<{ statementNumber: number; text: string; isLie: boolean }>;
   currentVotingStatements?: Array<{ statementNumber: number; text: string; isLie?: boolean }>;
   hasVoted?: boolean;
   voteCount?: number;
