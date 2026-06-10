@@ -16,9 +16,6 @@ param swaLocation string = 'westus2'
 @description('Custom domain for the Static Web App (e.g., truth.k61.dev)')
 param customDomain string = ''
 
-@description('Reset data by recreating tables')
-param resetData bool = false
-
 param tags object = {
   project: 'one-truth'
   environment: environment
@@ -44,7 +41,7 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.19.0' = {
       defaultAction: 'Allow'
     }
 
-    tableServices: resetData ? {
+    tableServices: {
       tables: [
         { name: 'games' }
         { name: 'players' }
@@ -52,7 +49,7 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.19.0' = {
         { name: 'votes' }
         { name: 'gamekeepers' }
       ]
-    } : {}
+    }
   }
 }
 
@@ -66,6 +63,18 @@ module staticSite 'br/public:avm/res/web/static-site:0.7.0' = {
     sku: 'Free'
     customDomains: customDomain != '' ? [customDomain] : []
   }
+}
+
+// Wire storage connection string to SWA app settings
+resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
+  name: '${staticSiteName}/appsettings'
+  properties: {
+    AZURE_STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=https;AccountName=${storageAccountName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', storageAccountName), '2023-05-01').keys[0].value};EndpointSuffix=core.windows.net'
+  }
+  dependsOn: [
+    staticSite
+    storageAccount
+  ]
 }
 
 // Outputs
