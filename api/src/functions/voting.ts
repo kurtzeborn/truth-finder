@@ -1,8 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { gamesTable, playersTable, statementsTable, votesTable } from '../shared/storage.js';
+import { gamesTable, playersTable, votesTable } from '../shared/storage.js';
 import { requireGameKeeper, AuthError } from '../shared/auth.js';
-import { PlayerEntity, StatementEntity, VoteEntity } from '../shared/types.js';
-import { validateGameId, getGameEntity } from '../shared/helpers.js';
+import { PlayerEntity, VoteEntity } from '../shared/types.js';
+import { validateGameId, validateGroupLetter, getGameEntity, parseVotedGroups, getGroupStatements, getGroupVotes } from '../shared/helpers.js';
 
 // POST /api/games/:id/voting/open/:letter
 app.http('openVoting', {
@@ -13,12 +13,10 @@ app.http('openVoting', {
     try {
       await requireGameKeeper(request);
       const gameId = validateGameId(request.params.gameId);
-      const letter = request.params.letter?.toUpperCase();
+      const letter = validateGroupLetter(request.params.letter);
 
       if (!gameId) return { status: 400, jsonBody: { error: 'Invalid game ID' } };
-      if (!letter || !/^[A-Z]$/.test(letter)) {
-        return { status: 400, jsonBody: { error: 'Invalid group letter' } };
-      }
+      if (!letter) return { status: 400, jsonBody: { error: 'Invalid group letter' } };
 
       const game = await getGameEntity(gameId);
       if (!game) return { status: 404, jsonBody: { error: 'Game not found' } };
@@ -26,7 +24,7 @@ app.http('openVoting', {
         return { status: 400, jsonBody: { error: 'Game is not in voting phase' } };
       }
 
-      const votedGroups: string[] = JSON.parse(game.votedGroups || '[]');
+      const votedGroups = parseVotedGroups(game);
       if (votedGroups.includes(letter)) {
         return { status: 400, jsonBody: { error: `Group ${letter} has already been voted on` } };
       }
@@ -65,12 +63,10 @@ app.http('closeVoting', {
     try {
       await requireGameKeeper(request);
       const gameId = validateGameId(request.params.gameId);
-      const letter = request.params.letter?.toUpperCase();
+      const letter = validateGroupLetter(request.params.letter);
 
       if (!gameId) return { status: 400, jsonBody: { error: 'Invalid game ID' } };
-      if (!letter || !/^[A-Z]$/.test(letter)) {
-        return { status: 400, jsonBody: { error: 'Invalid group letter' } };
-      }
+      if (!letter) return { status: 400, jsonBody: { error: 'Invalid group letter' } };
 
       const game = await getGameEntity(gameId);
       if (!game) return { status: 404, jsonBody: { error: 'Game not found' } };
@@ -81,30 +77,18 @@ app.http('closeVoting', {
         return { status: 400, jsonBody: { error: `Group ${letter} is not currently being voted on` } };
       }
 
-      const votedGroups: string[] = JSON.parse(game.votedGroups || '[]');
+      const votedGroups = parseVotedGroups(game);
       if (votedGroups.includes(letter)) {
         return { status: 400, jsonBody: { error: `Voting already closed for Group ${letter}` } };
       }
 
       // Find the lie for this group
-      let lieStatementNumber: number | null = null;
-      for (let n = 1; n <= 3; n++) {
-        try {
-          const s = await statementsTable.getEntity<StatementEntity>(gameId, `${letter}_${n}`);
-          if (s.isLie) lieStatementNumber = n;
-        } catch (error: any) {
-          if (error.statusCode !== 404) throw error;
-        }
-      }
+      const groupStatements = await getGroupStatements(gameId, letter);
+      const lieStatement = groupStatements.find(s => s.isLie);
+      const lieStatementNumber = lieStatement?.statementNumber ?? null;
 
       // Get all votes for this group
-      const votes: VoteEntity[] = [];
-      const voteEntities = votesTable.listEntities<VoteEntity>({
-        queryOptions: { filter: `PartitionKey eq '${gameId}'` },
-      });
-      for await (const v of voteEntities) {
-        if (v.groupLetter === letter) votes.push(v);
-      }
+      const votes = await getGroupVotes(gameId, letter);
 
       // Score each vote and update player scores
       for (const vote of votes) {
@@ -203,7 +187,7 @@ app.http('castVote', {
         return { status: 400, jsonBody: { error: 'This group is not currently being voted on' } };
       }
 
-      const votedGroups: string[] = JSON.parse(game.votedGroups || '[]');
+      const votedGroups = parseVotedGroups(game);
       if (votedGroups.includes(normalizedLetter)) {
         return { status: 400, jsonBody: { error: 'Voting has already closed for this group' } };
       }
@@ -255,46 +239,33 @@ app.http('getVotingResults', {
     try {
       await requireGameKeeper(request);
       const gameId = validateGameId(request.params.gameId);
-      const letter = request.params.letter?.toUpperCase();
+      const letter = validateGroupLetter(request.params.letter);
 
       if (!gameId) return { status: 400, jsonBody: { error: 'Invalid game ID' } };
-      if (!letter || !/^[A-Z]$/.test(letter)) {
-        return { status: 400, jsonBody: { error: 'Invalid group letter' } };
-      }
+      if (!letter) return { status: 400, jsonBody: { error: 'Invalid group letter' } };
 
       const game = await getGameEntity(gameId);
       if (!game) return { status: 404, jsonBody: { error: 'Game not found' } };
 
-      const votedGroups: string[] = JSON.parse(game.votedGroups || '[]');
+      const votedGroups = parseVotedGroups(game);
       if (!votedGroups.includes(letter)) {
         return { status: 400, jsonBody: { error: 'Voting has not closed for this group yet' } };
       }
 
       // Get statements with isLie
-      const statements: Array<{ statementNumber: number; text: string; isLie: boolean }> = [];
-      for (let n = 1; n <= 3; n++) {
-        try {
-          const s = await statementsTable.getEntity<StatementEntity>(gameId, `${letter}_${n}`);
-          statements.push({ statementNumber: s.statementNumber, text: s.text, isLie: s.isLie });
-        } catch (error: any) {
-          if (error.statusCode !== 404) throw error;
-        }
-      }
+      const groupStatements = await getGroupStatements(gameId, letter);
+      const statements = groupStatements.map(s => ({
+        statementNumber: s.statementNumber, text: s.text, isLie: s.isLie,
+      }));
 
       // Get votes and build breakdown
+      const votes = await getGroupVotes(gameId, letter);
       const breakdown = [0, 0, 0];
-      let totalVotes = 0;
       let correctVotes = 0;
-      const voteEntities = votesTable.listEntities<VoteEntity>({
-        queryOptions: { filter: `PartitionKey eq '${gameId}'` },
-      });
-      for await (const v of voteEntities) {
-        if (v.groupLetter === letter) {
-          totalVotes++;
-          if (v.isCorrect) correctVotes++;
-          if (v.chosenStatement >= 1 && v.chosenStatement <= 3) {
-            breakdown[v.chosenStatement - 1]++;
-          }
+      for (const v of votes) {
+        if (v.isCorrect) correctVotes++;
+        if (v.chosenStatement >= 1 && v.chosenStatement <= 3) {
+          breakdown[v.chosenStatement - 1]++;
         }
       }
 
@@ -302,7 +273,7 @@ app.http('getVotingResults', {
         status: 200,
         jsonBody: {
           statements,
-          totalVotes,
+          totalVotes: votes.length,
           correctVotes,
           breakdown: { statement1: breakdown[0], statement2: breakdown[1], statement3: breakdown[2] },
         },

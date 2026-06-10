@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { playersTable, statementsTable, votesTable } from '../shared/storage.js';
-import { GameEntity, PlayerEntity, StatementEntity, VoteEntity } from '../shared/types.js';
-import { validateGameId, getGameEntity } from '../shared/helpers.js';
+import { playersTable, votesTable } from '../shared/storage.js';
+import { PlayerEntity, VoteEntity } from '../shared/types.js';
+import { validateGameId, getGameEntity, parseVotedGroups, getGroupStatements } from '../shared/helpers.js';
 
 // GET /api/games/:id/state?playerId=X
 app.http('getGameState', {
@@ -39,12 +39,14 @@ app.http('getGameState', {
         }
       }
 
+      const votedGroups = parseVotedGroups(game);
+
       const gameData = {
         id: game.rowKey,
         status: game.status,
         groupSize: game.groupSize,
         currentVotingGroup: game.currentVotingGroup,
-        votedGroups: JSON.parse(game.votedGroups || '[]'),
+        votedGroups,
       };
 
       const playerData = player ? {
@@ -88,41 +90,28 @@ app.http('getGameState', {
 
           // Get statements for own group during statements phase
           if (game.status === 'statements' && player?.groupLetter) {
-            const statements: Array<{ statementNumber: number; text: string; isLie: boolean }> = [];
-            for (let n = 1; n <= 3; n++) {
-              try {
-                const s = await statementsTable.getEntity<StatementEntity>(gameId, `${player.groupLetter}_${n}`);
-                statements.push({ statementNumber: s.statementNumber, text: s.text, isLie: s.isLie });
-              } catch (error: any) {
-                if (error.statusCode !== 404) throw error;
-              }
-            }
-            result.statements = statements;
+            const groupStatements = await getGroupStatements(gameId, player.groupLetter);
+            result.statements = groupStatements.map(s => ({
+              statementNumber: s.statementNumber, text: s.text, isLie: s.isLie,
+            }));
           }
           break;
         }
 
         case 'voting': {
           if (game.currentVotingGroup) {
-            const votedGroupsList: string[] = JSON.parse(game.votedGroups || '[]');
-            const isVotingClosed = votedGroupsList.includes(game.currentVotingGroup);
+            const isVotingClosed = votedGroups.includes(game.currentVotingGroup);
             result.votingClosed = isVotingClosed;
 
             // Get statements (include isLie only after voting closes)
-            const votingStatements: Array<{ statementNumber: number; text: string; isLie?: boolean }> = [];
-            for (let n = 1; n <= 3; n++) {
-              try {
-                const s = await statementsTable.getEntity<StatementEntity>(gameId, `${game.currentVotingGroup}_${n}`);
-                const stmt: { statementNumber: number; text: string; isLie?: boolean } = {
-                  statementNumber: s.statementNumber, text: s.text,
-                };
-                if (isVotingClosed) stmt.isLie = s.isLie;
-                votingStatements.push(stmt);
-              } catch (error: any) {
-                if (error.statusCode !== 404) throw error;
-              }
-            }
-            result.currentVotingStatements = votingStatements;
+            const groupStatements = await getGroupStatements(gameId, game.currentVotingGroup);
+            result.currentVotingStatements = groupStatements.map(s => {
+              const stmt: { statementNumber: number; text: string; isLie?: boolean } = {
+                statementNumber: s.statementNumber, text: s.text,
+              };
+              if (isVotingClosed) stmt.isLie = s.isLie;
+              return stmt;
+            });
 
             // Check if player has voted (only for non-GK, non-presenting players)
             if (player && player.groupLetter !== game.currentVotingGroup) {

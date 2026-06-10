@@ -167,6 +167,13 @@ function StatementsSection({ state, session }: { state: GameState; session: Play
 function VotingSection({ state, session }: { state: GameState; session: PlayerSession }) {
   const queryClient = useQueryClient();
   const [selectedStatement, setSelectedStatement] = useState<number | null>(null);
+  const [lastGroup, setLastGroup] = useState<string | undefined>(undefined);
+
+  // Reset selection when the voting group changes
+  if (state.game.currentVotingGroup !== lastGroup) {
+    setLastGroup(state.game.currentVotingGroup);
+    setSelectedStatement(null);
+  }
 
   const isOwnGroup = state.game.currentVotingGroup === state.player?.groupLetter;
   const hasVoted = state.hasVoted;

@@ -1,17 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpRequest, InvocationContext } from '@azure/functions';
-import { gamesTable, playersTable, statementsTable, votesTable } from '../shared/storage.js';
+import { gamesTable, playersTable, votesTable } from '../shared/storage.js';
 import { AuthError } from '../shared/auth.js';
 
 vi.mock('../shared/storage.js', () => ({
   gamesTable: { getEntity: vi.fn(), updateEntity: vi.fn() },
   playersTable: { getEntity: vi.fn(), updateEntity: vi.fn() },
-  statementsTable: { getEntity: vi.fn() },
   votesTable: {
     getEntity: vi.fn(),
     createEntity: vi.fn(),
     updateEntity: vi.fn(),
-    listEntities: vi.fn(),
   },
 }));
 
@@ -31,21 +29,29 @@ vi.mock('../shared/helpers.js', () => ({
     if (!id || !/^[A-Z0-9]{4}$/.test(id.toUpperCase())) return null;
     return id.toUpperCase();
   }),
+  validateGroupLetter: vi.fn((raw: string) => {
+    if (!raw) return null;
+    const letter = raw.toUpperCase();
+    return /^[A-Z]$/.test(letter) ? letter : null;
+  }),
+  parseVotedGroups: vi.fn((game: any) => JSON.parse(game.votedGroups || '[]')),
   getGameEntity: vi.fn(),
+  getGroupStatements: vi.fn(),
+  getGroupVotes: vi.fn(),
 }));
 
-import { getGameEntity } from '../shared/helpers.js';
+import { getGameEntity, getGroupStatements, getGroupVotes } from '../shared/helpers.js';
 import { requireGameKeeper } from '../shared/auth.js';
 
 const mockGetGame = vi.mocked(getGameEntity);
+const mockGetGroupStatements = vi.mocked(getGroupStatements);
+const mockGetGroupVotes = vi.mocked(getGroupVotes);
 const mockGamesUpdate = vi.mocked(gamesTable.updateEntity);
 const mockPlayersGet = vi.mocked(playersTable.getEntity);
 const mockPlayersUpdate = vi.mocked(playersTable.updateEntity);
-const mockStatementsGet = vi.mocked(statementsTable.getEntity);
 const mockVotesGet = vi.mocked(votesTable.getEntity);
 const mockVotesCreate = vi.mocked(votesTable.createEntity);
 const mockVotesUpdate = vi.mocked(votesTable.updateEntity);
-const mockVotesList = vi.mocked(votesTable.listEntities);
 const mockRequireGK = vi.mocked(requireGameKeeper);
 
 // Capture handlers
@@ -74,14 +80,6 @@ function makeRequest(params: Record<string, string>, body?: unknown, query?: Rec
 }
 
 const mockContext = { error: vi.fn() } as unknown as InvocationContext;
-
-function asyncIter<T>(...items: T[]) {
-  return {
-    [Symbol.asyncIterator]: async function* () {
-      for (const item of items) yield item;
-    },
-  };
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -199,16 +197,17 @@ describe('closeVoting', () => {
     mockGetGame.mockResolvedValue({ rowKey: 'ABCD', status: 'voting', currentVotingGroup: 'A', votedGroups: '[]' } as any);
 
     // Statement 2 is the lie
-    mockStatementsGet.mockImplementation((_pk: any, rk: any) => {
-      const n = parseInt(rk.split('_')[1]);
-      return Promise.resolve({ statementNumber: n, text: `S${n}`, isLie: n === 2 } as any);
-    });
+    mockGetGroupStatements.mockResolvedValue([
+      { statementNumber: 1, text: 'S1', isLie: false },
+      { statementNumber: 2, text: 'S2', isLie: true },
+      { statementNumber: 3, text: 'S3', isLie: false },
+    ] as any);
 
     // Two votes: one correct (chose 2), one wrong (chose 1)
-    mockVotesList.mockReturnValue(asyncIter(
+    mockGetGroupVotes.mockResolvedValue([
       { rowKey: 'p1_A', playerId: 'p1', groupLetter: 'A', chosenStatement: 2 },
       { rowKey: 'p2_A', playerId: 'p2', groupLetter: 'A', chosenStatement: 1 },
-    ) as any);
+    ] as any);
 
     mockPlayersGet.mockResolvedValue({ rowKey: 'p1', score: 0 } as any);
 
