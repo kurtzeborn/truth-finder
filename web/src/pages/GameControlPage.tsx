@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { fetchAuthStatus, fetchGame, fetchGameState, fetchGroups, assignGroups, transitionGame, deleteGame, openVoting, closeVoting, fetchVotingResults } from '../api';
 import type { GroupInfo } from '../api';
 import type { Game } from '../types';
+import { Leaderboard } from '../components/Leaderboard';
 
 function LobbyView({ gameId, playerCount, players }: {
   gameId: string;
@@ -405,6 +406,32 @@ function VotingView({ gameId, game, groups }: {
   );
 }
 
+function ResultsView({ gameId, onDelete }: { gameId: string; onDelete: () => void }) {
+  const { data: state } = useQuery({
+    queryKey: ['resultsState', gameId],
+    queryFn: () => fetchGameState(gameId, '__gk__'),
+  });
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 text-center">Final Results</h2>
+      {state?.scores ? (
+        <Leaderboard scores={state.scores} />
+      ) : (
+        <p className="text-gray-400 text-center">Loading scores...</p>
+      )}
+      <div className="mt-8 text-center">
+        <button
+          onClick={() => { if (confirm('Delete this game? This cannot be undone.')) onDelete(); }}
+          className="text-red-400 hover:text-red-300 text-sm"
+        >
+          Delete Game
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function GameControlPage() {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -488,7 +515,7 @@ export function GameControlPage() {
           </div>
           <div className="flex items-center gap-4">
             <span className="px-3 py-1 rounded-full bg-gray-800 text-sm capitalize">{game.status}</span>
-            {game.status === 'lobby' && (
+            {(game.status === 'lobby' || game.status === 'results') && (
               <button
                 onClick={() => { if (confirm('Delete this game?')) deleteMutation.mutate(); }}
                 className="text-red-400 hover:text-red-300 text-sm"
@@ -518,10 +545,7 @@ export function GameControlPage() {
             <VotingView gameId={game.id} game={game} groups={groups} />
           )}
           {game.status === 'results' && (
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Results</h2>
-              <p className="text-gray-400">Leaderboard coming in Phase 5</p>
-            </div>
+            <ResultsView gameId={game.id} onDelete={() => deleteMutation.mutate()} />
           )}
         </div>
       </div>

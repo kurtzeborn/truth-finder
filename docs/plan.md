@@ -752,11 +752,11 @@ one-truth/
 - [x] Voting and score calculation unit tests
 
 ### Phase 5: Results
-- [ ] Score calculation and ranking
-- [ ] Animated leaderboard reveal (bottom-up, 0.5s per entry)
-- [ ] Top 3 celebration effects
-- [ ] Player phone leaderboard view
-- [ ] Game cleanup
+- [x] Score calculation and ranking
+- [x] Animated leaderboard reveal (bottom-up, 0.5s per entry)
+- [x] Top 3 celebration effects
+- [x] Player phone leaderboard view
+- [x] Game cleanup
 
 ### Phase 6: Polish & Stretch
 - [ ] Fastest vote bonus (+2 points) — stretch goal

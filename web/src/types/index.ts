@@ -74,5 +74,5 @@ export interface GameState {
   voteCount?: number;
   votingClosed?: boolean;
   playerVoteResult?: { chosenStatement: number; isCorrect: boolean; pointsAwarded: number };
-  scores?: Player[];
+  scores?: Array<{ id: string; displayName: string; score: number }>;
 }

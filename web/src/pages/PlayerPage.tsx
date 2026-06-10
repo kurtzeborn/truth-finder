@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchGameState, updateStatement, castVote } from '../api';
 import type { PlayerSession, GameState } from '../types';
+import { Leaderboard } from '../components/Leaderboard';
 
 function LobbySection({ state }: { state: GameState }) {
   return (
@@ -315,18 +316,21 @@ function VotingSection({ state, session }: { state: GameState; session: PlayerSe
 
 function ResultsSection({ state }: { state: GameState }) {
   return (
-    <div className="text-center">
-      <h2 className="text-2xl font-bold mb-4">Results</h2>
-      <p className="text-gray-400">Leaderboard coming in Phase 5</p>
-      {state.scores && (
-        <ul className="space-y-1 mt-4">
-          {state.scores.map((p, i) => (
-            <li key={p.id} className="text-gray-300">
-              {i + 1}. {p.displayName} — {p.score} pts
-            </li>
-          ))}
-        </ul>
+    <div className="w-full max-w-md mx-auto">
+      <h2 className="text-2xl font-bold mb-4 text-center">Final Results</h2>
+      {state.scores ? (
+        <Leaderboard scores={state.scores} compact />
+      ) : (
+        <p className="text-gray-400 text-center">Loading scores...</p>
       )}
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => { localStorage.removeItem('playerSession'); window.location.href = '/'; }}
+          className="text-blue-400 hover:underline text-sm"
+        >
+          Leave Game
+        </button>
+      </div>
     </div>
   );
 }
