@@ -518,7 +518,97 @@ Requirements:
 
 ---
 
-## 16. Tech Stack
+## 16. Testing Strategy
+
+### API Unit Tests (Vitest)
+
+The API layer contains all game logic and is the primary testing target. Tests mock Table Storage and validate function behavior in isolation.
+
+**Framework**: Vitest (matches scavenger-hunt, fast, native TypeScript)
+
+**What to test:**
+
+| Area | Key Test Cases |
+|------|---------------|
+| **Game state transitions** | Valid transitions succeed, invalid transitions rejected (e.g., lobby→voting), can't go backwards |
+| **Group assignment** | Correct number of groups, letter assignment (A-Z), remainder handling (13÷5 = 5,5,3), randomization |
+| **Vote validation** | Can't vote on own group, can't vote twice per group, can't vote after close, valid statement number (1-3) |
+| **Score calculation** | 3 pts per correct vote, scores aggregate across groups, fastest vote bonus (stretch) |
+| **Auth/authorization** | Game keeper header parsing, allowlist lookup, reject unauthorized create/transition/delete |
+| **Statement validation** | Only group members can edit, 1-200 char limit, statement number 1-3 |
+| **Game code generation** | 4-char alphanumeric, uniqueness retry on collision |
+| **Unified state endpoint** | Returns phase-appropriate data, filters by playerId, excludes lie marker during voting |
+
+**Mocking pattern:**
+```typescript
+// Mock Table Storage client
+vi.mock('../shared/storage.js', () => ({
+  gamesTable: { getEntity: vi.fn(), upsertEntity: vi.fn() },
+  playersTable: { listEntities: vi.fn(), upsertEntity: vi.fn() },
+  // ...
+}));
+```
+
+**Target**: 80%+ coverage on API functions.
+
+### Smoke Tests (Post-Deploy)
+
+Lightweight HTTP checks run after each deployment to validate the live site.
+
+**Location**: `tests/smoke.js` (plain Node.js, no dependencies)
+
+| Test | Validates |
+|------|-----------|
+| Landing page loads | HTML contains expected markers |
+| `/api/me` responds | Auth endpoint is accessible |
+| Invalid game code returns 404 | Error handling works |
+| Create → join → state flow | Core game flow is functional (requires GK auth token) |
+
+### Web Layer
+
+**No frontend unit tests.** The player UI is a thin state machine that renders sections based on `game.status` — the logic worth testing is all server-side. The web layer is validated by:
+- ESLint (catches code quality issues)
+- TypeScript compiler (catches type errors)
+- Manual testing with two browser tabs (GK + player)
+
+### Local Testing
+
+```bash
+# API unit tests (watch mode)
+cd api && npm test
+
+# API unit tests (single run, CI)
+cd api && npm run test:run
+
+# Web linting
+cd web && npm run lint
+
+# Full local game test
+.\start-dev.ps1   # Starts Azurite + SWA CLI
+# Open two browser windows: one GK, one player (or use phone on same network)
+
+# Smoke tests against local
+node tests/smoke.js http://localhost:4280
+```
+
+### CI/CD Pipeline
+
+```
+Validate (all PRs + main):
+  ├── web: npm ci → lint → build
+  └── api: npm ci → build → test:run
+
+Deploy (main only):
+  ├── Deploy Bicep infrastructure
+  └── Deploy SWA (web + api)
+
+Smoke (main, after deploy):
+  └── node tests/smoke.js https://truth.k61.dev
+```
+
+---
+
+## 17. Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -530,11 +620,12 @@ Requirements:
 | **DNS** | Cloudflare CNAME (truth.k61.dev) |
 | **IaC** | Bicep |
 | **CI/CD** | GitHub Actions |
+| **Testing** | Vitest (API unit tests), smoke tests (post-deploy) |
 | **QR Code** | `qrcode.react` (client-side generation) |
 
 ---
 
-## 17. Infrastructure (Bicep)
+## 18. Infrastructure (Bicep)
 
 ### Resources
 | Resource | Name | SKU/Tier |
@@ -560,7 +651,7 @@ Requirements:
 
 ---
 
-## 18. Project Structure
+## 19. Project Structure
 
 ```
 one-truth/
@@ -575,19 +666,23 @@ one-truth/
 ├── api/                             # SWA managed functions
 │   ├── src/
 │   │   ├── functions/               # HTTP trigger functions
-│   │   └── shared/                  # Auth helpers, table client, utils
+│   │   ├── shared/                  # Auth helpers, table client, utils
+│   │   └── __tests__/               # Vitest unit tests
 │   ├── host.json
 │   ├── local.settings.json
 │   ├── package.json
-│   └── tsconfig.json
+│   ├── tsconfig.json
+│   └── vitest.config.ts
 ├── infra/
 │   ├── main.bicep               # All Azure resources
 │   └── main.bicepparam          # Parameters
+├── tests/
+│   └── smoke.js                 # Post-deploy smoke tests
 ├── web/
 │   ├── src/
 │   │   ├── components/          # Shared UI components
 │   │   ├── pages/               # Route pages
-│   │   ├── hooks/               # useGameUpdates, useAuth, etc.
+│   │   ├── hooks/               # useGameState, useAuth, etc.
 │   │   ├── api/                 # API client functions
 │   │   └── types/               # TypeScript interfaces
 │   ├── index.html
@@ -603,15 +698,16 @@ one-truth/
 
 ---
 
-## 19. Development Phases
+## 20. Development Phases
 
 ### Phase 1: Foundation
-- [ ] Initialize repo structure (web + functions + infra)
+- [ ] Initialize repo structure (web + api + infra + tests)
 - [ ] Set up Bicep infrastructure
-- [ ] Configure GitHub Actions CI/CD
-- [ ] Set up local development environment (Azurite + Vite proxy)
+- [ ] Configure GitHub Actions CI/CD (lint, build, test, deploy, smoke)
+- [ ] Set up local development environment (Azurite + SWA CLI)
 - [ ] Implement Game Keeper auth (Entra ID + allowlist)
 - [ ] Create/delete game API + basic UI
+- [ ] Auth unit tests
 
 ### Phase 2: Lobby & Grouping
 - [ ] Game creation with QR code display
@@ -620,6 +716,7 @@ one-truth/
 - [ ] Group size input + random group assignment
 - [ ] Player group assignment display
 - [ ] Game Keeper group roster view
+- [ ] Group assignment unit tests (randomization, remainders, letter assignment)
 
 ### Phase 3: Statements
 - [ ] Statement entry form (3 statements + mark the lie)
@@ -635,6 +732,7 @@ one-truth/
 - [ ] Vote count display for Game Keeper
 - [ ] Lie reveal animation after voting closes
 - [ ] Score calculation (3 points per correct vote)
+- [ ] Voting and score calculation unit tests
 
 ### Phase 5: Results
 - [ ] Score calculation and ranking
@@ -649,11 +747,11 @@ one-truth/
 - [ ] Responsive design polish (projector vs phone)
 - [ ] Error handling and edge cases
 - [ ] DNS setup (truth.k61.dev via Cloudflare)
-- [ ] Production deployment and testing
+- [ ] Production deployment and smoke tests
 
 ---
 
-## 20. Edge Cases & Design Decisions
+## 21. Edge Cases & Design Decisions
 
 | Scenario | Behavior |
 |----------|----------|
