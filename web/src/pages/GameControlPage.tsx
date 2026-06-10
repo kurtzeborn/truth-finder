@@ -58,10 +58,10 @@ function LobbyView({ gameId, playerCount, players }: {
           <label className="text-gray-400 whitespace-nowrap">Group size:</label>
           <input
             type="number"
-            min={2}
+            min={1}
             max={20}
             value={groupSize}
-            onChange={(e) => setGroupSize(Math.max(2, Math.min(20, parseInt(e.target.value) || 2)))}
+            onChange={(e) => setGroupSize(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
             className="w-20 p-2 rounded bg-gray-800 border border-gray-700 text-center"
           />
           <span className="text-gray-500 text-sm">

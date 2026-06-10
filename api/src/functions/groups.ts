@@ -26,7 +26,7 @@ app.http('assignGroups', {
       }
 
       const groupSize = body.groupSize;
-      if (!groupSize || !Number.isInteger(groupSize) || groupSize < 2 || groupSize > 20) {
+      if (!groupSize || !Number.isInteger(groupSize) || groupSize < 1 || groupSize > 20) {
         return { status: 400, jsonBody: { error: 'Group size must be an integer between 2 and 20' } };
       }
 
