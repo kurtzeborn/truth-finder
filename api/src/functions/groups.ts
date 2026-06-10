@@ -3,6 +3,7 @@ import { gamesTable, playersTable, statementsTable } from '../shared/storage.js'
 import { requireGameKeeper, AuthError } from '../shared/auth.js';
 import { GameEntity, PlayerEntity, StatementEntity } from '../shared/types.js';
 import { shuffle, assignToGroups, MAX_GROUPS } from '../shared/groups.js';
+import { validateGameId, getGameEntity } from '../shared/helpers.js';
 
 // POST /api/games/:id/assign-groups
 app.http('assignGroups', {
@@ -12,9 +13,9 @@ app.http('assignGroups', {
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       await requireGameKeeper(request);
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
       let body;
@@ -30,14 +31,9 @@ app.http('assignGroups', {
       }
 
       // Get game
-      let game: GameEntity;
-      try {
-        game = await gamesTable.getEntity<GameEntity>('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       if (game.status !== 'lobby') {
@@ -126,19 +122,15 @@ app.http('getGroups', {
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       await requireGameKeeper(request);
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
       // Verify game exists
-      try {
-        await gamesTable.getEntity('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       // Get all players and organize by group

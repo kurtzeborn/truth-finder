@@ -62,7 +62,7 @@ app.http('inviteGameKeeper', {
       const entity: GameKeeperEntity = {
         partitionKey: 'gamekeeper',
         rowKey: email,
-        displayName: body.displayName || email.split('@')[0],
+        displayName: (body.displayName || email.split('@')[0]).replace(/[<>]/g, ''),
         addedBy: user.userDetails,
         addedAt: new Date(),
       };

@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { gamesTable, playersTable, statementsTable, votesTable } from '../shared/storage.js';
+import { playersTable, statementsTable, votesTable } from '../shared/storage.js';
 import { GameEntity, PlayerEntity, StatementEntity, VoteEntity } from '../shared/types.js';
+import { validateGameId, getGameEntity } from '../shared/helpers.js';
 
 // GET /api/games/:id/state?playerId=X
 app.http('getGameState', {
@@ -9,7 +10,7 @@ app.http('getGameState', {
   route: 'games/{gameId}/state',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       const playerId = request.query.get('playerId');
 
       if (!gameId || !playerId) {
@@ -17,14 +18,9 @@ app.http('getGameState', {
       }
 
       // Get game
-      let game: GameEntity;
-      try {
-        game = await gamesTable.getEntity<GameEntity>('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       // Get requesting player (optional during lobby for GK view)

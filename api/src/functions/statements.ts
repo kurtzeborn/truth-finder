@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { gamesTable, playersTable, statementsTable } from '../shared/storage.js';
-import { GameEntity, PlayerEntity, StatementEntity } from '../shared/types.js';
+import { playersTable, statementsTable } from '../shared/storage.js';
+import { PlayerEntity, StatementEntity } from '../shared/types.js';
+import { validateGameId, getGameEntity } from '../shared/helpers.js';
 
 // PUT /api/games/:id/groups/:letter/statements/:n
 app.http('updateStatement', {
@@ -9,12 +10,12 @@ app.http('updateStatement', {
   route: 'games/{gameId}/groups/{groupLetter}/statements/{statementNumber}',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       const groupLetter = request.params.groupLetter?.toUpperCase();
       const statementNumber = parseInt(request.params.statementNumber || '');
 
       if (!gameId || !groupLetter) {
-        return { status: 400, jsonBody: { error: 'Game ID and group letter are required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID or group letter' } };
       }
 
       if (![1, 2, 3].includes(statementNumber)) {
@@ -41,14 +42,9 @@ app.http('updateStatement', {
       }
 
       // Verify game exists and is in statements phase
-      let game: GameEntity;
-      try {
-        game = await gamesTable.getEntity<GameEntity>('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       if (game.status !== 'statements') {

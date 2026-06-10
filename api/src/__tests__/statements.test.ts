@@ -64,7 +64,6 @@ describe('Statement Endpoint', () => {
       { gameId: 'TEST', groupLetter: 'A', statementNumber: '1' },
       { text: 'hello', isLie: false },
     );
-    mockGamesGet.mockResolvedValue({ status: 'statements' } as any);
     const res = await updateStatementHandler(req, mockContext);
     expect(res.status).toBe(400);
     expect((res.jsonBody as any).error).toContain('playerId');
@@ -75,8 +74,6 @@ describe('Statement Endpoint', () => {
       { gameId: 'TEST', groupLetter: 'A', statementNumber: '1' },
       { text: '   ', isLie: false, playerId: 'p1' },
     );
-    mockGamesGet.mockResolvedValue({ status: 'statements' } as any);
-    mockPlayersGet.mockResolvedValue({ groupLetter: 'A' } as any);
     const res = await updateStatementHandler(req, mockContext);
     expect(res.status).toBe(400);
     expect((res.jsonBody as any).error).toContain('1-200 characters');
@@ -87,8 +84,6 @@ describe('Statement Endpoint', () => {
       { gameId: 'TEST', groupLetter: 'A', statementNumber: '1' },
       { text: 'x'.repeat(201), isLie: false, playerId: 'p1' },
     );
-    mockGamesGet.mockResolvedValue({ status: 'statements' } as any);
-    mockPlayersGet.mockResolvedValue({ groupLetter: 'A' } as any);
     const res = await updateStatementHandler(req, mockContext);
     expect(res.status).toBe(400);
   });

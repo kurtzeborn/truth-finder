@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { gamesTable } from '../shared/storage.js';
 import { requireGameKeeper, AuthError } from '../shared/auth.js';
-import { GameEntity } from '../shared/types.js';
+import { validateGameId, getGameEntity } from '../shared/helpers.js';
 
 const validTransitions: Record<string, string> = {
   'grouping': 'statements',
@@ -17,9 +17,9 @@ app.http('transitionGame', {
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       await requireGameKeeper(request);
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
       let body;
@@ -35,14 +35,9 @@ app.http('transitionGame', {
       }
 
       // Get current game
-      let game: GameEntity;
-      try {
-        game = await gamesTable.getEntity<GameEntity>('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       // Validate transition

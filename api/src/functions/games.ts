@@ -1,7 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { gamesTable, playersTable } from '../shared/storage.js';
+import { gamesTable, playersTable, statementsTable, votesTable } from '../shared/storage.js';
 import { requireGameKeeper, AuthError } from '../shared/auth.js';
 import { GameEntity } from '../shared/types.js';
+import { validateGameId, getGameEntity } from '../shared/helpers.js';
 
 // Generate a random 4-character alphanumeric code
 function generateGameCode(): string {
@@ -75,31 +76,28 @@ app.http('getGame', {
   route: 'games/{gameId}',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
-      try {
-        const entity = await gamesTable.getEntity<GameEntity>('game', gameId);
-        return {
-          status: 200,
-          jsonBody: {
-            id: entity.rowKey,
-            createdBy: entity.createdBy,
-            createdAt: entity.createdAt,
-            status: entity.status,
-            groupSize: entity.groupSize,
-            currentVotingGroup: entity.currentVotingGroup,
-            votedGroups: JSON.parse(entity.votedGroups || '[]'),
-          },
-        };
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const entity = await getGameEntity(gameId);
+      if (!entity) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
+
+      return {
+        status: 200,
+        jsonBody: {
+          id: entity.rowKey,
+          createdBy: entity.createdBy,
+          createdAt: entity.createdAt,
+          status: entity.status,
+          groupSize: entity.groupSize,
+          currentVotingGroup: entity.currentVotingGroup,
+          votedGroups: JSON.parse(entity.votedGroups || '[]'),
+        },
+      };
     } catch (error) {
       context.error('Failed to get game:', error);
       return { status: 500, jsonBody: { error: 'Failed to get game' } };
@@ -115,9 +113,9 @@ app.http('deleteGame', {
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       await requireGameKeeper(request);
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
       // Delete game
@@ -130,10 +128,13 @@ app.http('deleteGame', {
         throw error;
       }
 
-      // Clean up players
-      const players = playersTable.listEntities({ queryOptions: { filter: `PartitionKey eq '${gameId}'` } });
-      for await (const player of players) {
-        await playersTable.deleteEntity(player.partitionKey!, player.rowKey!);
+      // Clean up all related data
+      const tables = [playersTable, statementsTable, votesTable];
+      for (const table of tables) {
+        const entities = table.listEntities({ queryOptions: { filter: `PartitionKey eq '${gameId}'` } });
+        for await (const entity of entities) {
+          await table.deleteEntity(entity.partitionKey!, entity.rowKey!);
+        }
       }
 
       return { status: 204, body: undefined };
@@ -154,9 +155,9 @@ app.http('joinGame', {
   route: 'games/{gameId}/join',
   handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
-      const gameId = request.params.gameId?.toUpperCase();
+      const gameId = validateGameId(request.params.gameId);
       if (!gameId) {
-        return { status: 400, jsonBody: { error: 'Game ID is required' } };
+        return { status: 400, jsonBody: { error: 'Invalid game ID' } };
       }
 
       let body;
@@ -171,14 +172,9 @@ app.http('joinGame', {
       }
 
       // Verify game exists and is in lobby
-      let game: GameEntity;
-      try {
-        game = await gamesTable.getEntity<GameEntity>('game', gameId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          return { status: 404, jsonBody: { error: 'Game not found' } };
-        }
-        throw error;
+      const game = await getGameEntity(gameId);
+      if (!game) {
+        return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
       if (game.status !== 'lobby') {
