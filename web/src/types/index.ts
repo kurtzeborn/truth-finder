@@ -69,8 +69,10 @@ export interface GameState {
   players?: Player[];
   groupMembers?: Player[];
   statements?: Statement[];
-  currentVotingStatements?: Omit<Statement, 'isLie'>[];
+  currentVotingStatements?: Array<{ statementNumber: number; text: string; isLie?: boolean }>;
   hasVoted?: boolean;
   voteCount?: number;
+  votingClosed?: boolean;
+  playerVoteResult?: { chosenStatement: number; isCorrect: boolean; pointsAwarded: number };
   scores?: Player[];
 }

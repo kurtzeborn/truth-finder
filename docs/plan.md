@@ -743,13 +743,13 @@ one-truth/
 - [x] State transition: statements → voting
 
 ### Phase 4: Voting
-- [ ] Game Keeper voting controls (open/close per group, advance to next)
-- [ ] Projected statement display (3 statements, large format)
-- [ ] Player voting interface (tap to vote, excluded if own group)
-- [ ] Vote count display for Game Keeper
-- [ ] Lie reveal animation after voting closes
-- [ ] Score calculation (3 points per correct vote)
-- [ ] Voting and score calculation unit tests
+- [x] Game Keeper voting controls (open/close per group, advance to next)
+- [x] Projected statement display (3 statements, large format)
+- [x] Player voting interface (tap to vote, excluded if own group)
+- [x] Vote count display for Game Keeper
+- [x] Lie reveal after voting closes
+- [x] Score calculation (3 points per correct vote)
+- [x] Voting and score calculation unit tests
 
 ### Phase 5: Results
 - [ ] Score calculation and ranking

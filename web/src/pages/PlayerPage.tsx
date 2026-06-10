@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchGameState, updateStatement } from '../api';
+import { fetchGameState, updateStatement, castVote } from '../api';
 import type { PlayerSession, GameState } from '../types';
 
 function LobbySection({ state }: { state: GameState }) {
@@ -164,14 +164,143 @@ function StatementsSection({ state, session }: { state: GameState; session: Play
   );
 }
 
-function VotingSection({ state }: { state: GameState }) {
+function VotingSection({ state, session }: { state: GameState; session: PlayerSession }) {
+  const queryClient = useQueryClient();
+  const [selectedStatement, setSelectedStatement] = useState<number | null>(null);
+
+  const isOwnGroup = state.game.currentVotingGroup === state.player?.groupLetter;
+  const hasVoted = state.hasVoted;
+  const votingClosed = state.votingClosed;
+  const statements = state.currentVotingStatements || [];
+  const result = state.playerVoteResult;
+
+  const voteMutation = useMutation({
+    mutationFn: (chosenStatement: number) =>
+      castVote(session.gameId, session.playerId, state.game.currentVotingGroup!, chosenStatement),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gameState'] });
+    },
+  });
+
+  // No group being voted on yet
+  if (!state.game.currentVotingGroup) {
+    return (
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-4">Voting Phase</h2>
+        <p className="text-gray-400">Waiting for the host to open voting...</p>
+      </div>
+    );
+  }
+
+  // Own group is being presented
+  if (isOwnGroup) {
+    return (
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-4">Group {state.game.currentVotingGroup}</h2>
+        <p className="text-yellow-400 text-xl">Your group is being presented!</p>
+        <p className="text-gray-400 mt-2">Watch the screen — you can't vote on your own group.</p>
+      </div>
+    );
+  }
+
+  // Reveal: voting closed for this group
+  if (votingClosed && result) {
+    const lieStatement = statements.find(s => s.isLie);
+    return (
+      <div className="text-center space-y-4">
+        <h2 className="text-2xl font-bold">Group {state.game.currentVotingGroup}</h2>
+        <div className="space-y-3">
+          {statements.map(s => (
+            <div key={s.statementNumber} className={`rounded-lg p-4 ${
+              s.isLie ? 'bg-red-900/40 border-2 border-red-500' : 'bg-gray-800'
+            }`}>
+              <p className={s.isLie ? 'text-red-300' : ''}>{s.text}</p>
+              {s.isLie && <span className="text-red-400 text-sm font-bold">← THE LIE</span>}
+            </div>
+          ))}
+        </div>
+        <div className={`rounded-lg p-4 ${result.isCorrect ? 'bg-green-900/40' : 'bg-gray-800'}`}>
+          <p className="text-lg font-bold">
+            {result.isCorrect ? '✓ Correct!' : '✗ Wrong!'}
+          </p>
+          <p className="text-gray-400 text-sm">
+            You picked statement {result.chosenStatement}
+            {lieStatement ? ` — the lie was statement ${lieStatement.statementNumber}` : ''}
+          </p>
+          {result.pointsAwarded > 0 && (
+            <p className="text-green-400 font-bold mt-1">+{result.pointsAwarded} points</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Reveal: voting closed but player didn't vote (own group or didn't vote in time)
+  if (votingClosed) {
+    return (
+      <div className="text-center space-y-4">
+        <h2 className="text-2xl font-bold">Group {state.game.currentVotingGroup}</h2>
+        <div className="space-y-3">
+          {statements.map(s => (
+            <div key={s.statementNumber} className={`rounded-lg p-4 ${
+              s.isLie ? 'bg-red-900/40 border-2 border-red-500' : 'bg-gray-800'
+            }`}>
+              <p className={s.isLie ? 'text-red-300' : ''}>{s.text}</p>
+              {s.isLie && <span className="text-red-400 text-sm font-bold">← THE LIE</span>}
+            </div>
+          ))}
+        </div>
+        <p className="text-gray-500">Waiting for the next group...</p>
+      </div>
+    );
+  }
+
+  // Already voted, waiting for close
+  if (hasVoted) {
+    return (
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-4">Group {state.game.currentVotingGroup}</h2>
+        <p className="text-green-400 text-lg">Vote submitted!</p>
+        <p className="text-gray-400 mt-2">Waiting for voting to close...</p>
+      </div>
+    );
+  }
+
+  // Vote buttons
   return (
-    <div className="text-center">
-      <h2 className="text-2xl font-bold mb-4">Voting</h2>
-      {state.game.currentVotingGroup === state.player?.groupLetter ? (
-        <p className="text-yellow-400 text-xl">Your group is being presented! Watch the screen.</p>
-      ) : (
-        <p className="text-gray-400">Voting UI coming in Phase 4</p>
+    <div className="text-center space-y-4">
+      <h2 className="text-2xl font-bold">Group {state.game.currentVotingGroup}</h2>
+      <p className="text-gray-400">Which one is the lie?</p>
+
+      <div className="space-y-3">
+        {statements.map(s => (
+          <button
+            key={s.statementNumber}
+            onClick={() => setSelectedStatement(s.statementNumber)}
+            disabled={voteMutation.isPending}
+            className={`w-full text-left rounded-lg p-4 transition-colors ${
+              selectedStatement === s.statementNumber
+                ? 'bg-blue-700 border-2 border-blue-400'
+                : 'bg-gray-800 hover:bg-gray-700 border-2 border-transparent'
+            }`}
+          >
+            <p>{s.text}</p>
+          </button>
+        ))}
+      </div>
+
+      {selectedStatement !== null && (
+        <button
+          onClick={() => voteMutation.mutate(selectedStatement)}
+          disabled={voteMutation.isPending}
+          className="px-8 py-3 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 font-semibold"
+        >
+          {voteMutation.isPending ? 'Submitting...' : 'Lock In Vote'}
+        </button>
+      )}
+
+      {voteMutation.isError && (
+        <p className="text-red-400 text-sm">{voteMutation.error.message}</p>
       )}
     </div>
   );
@@ -255,7 +384,7 @@ export function PlayerPage() {
             case 'lobby': return <LobbySection state={state} />;
             case 'grouping': return <GroupingSection state={state} />;
             case 'statements': return <StatementsSection state={state} session={session} />;
-            case 'voting': return <VotingSection state={state} />;
+            case 'voting': return <VotingSection state={state} session={session} />;
             case 'results': return <ResultsSection state={state} />;
           }
         })()

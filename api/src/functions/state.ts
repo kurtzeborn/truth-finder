@@ -23,18 +23,19 @@ app.http('getGameState', {
         return { status: 404, jsonBody: { error: 'Game not found' } };
       }
 
-      // Get requesting player (optional during lobby for GK view)
+      // Get requesting player (skip lookup for GK polling with __gk__)
       let player: PlayerEntity | null = null;
-      try {
-        player = await playersTable.getEntity<PlayerEntity>(gameId, playerId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          // Allow lobby phase without a valid player (GK viewing)
-          if (game.status !== 'lobby') {
-            return { status: 404, jsonBody: { error: 'Player not found' } };
+      if (playerId !== '__gk__') {
+        try {
+          player = await playersTable.getEntity<PlayerEntity>(gameId, playerId);
+        } catch (error: any) {
+          if (error.statusCode === 404) {
+            if (game.status !== 'lobby') {
+              return { status: 404, jsonBody: { error: 'Player not found' } };
+            }
+          } else {
+            throw error;
           }
-        } else {
-          throw error;
         }
       }
 
@@ -103,25 +104,42 @@ app.http('getGameState', {
 
         case 'voting': {
           if (game.currentVotingGroup) {
-            // Get statements for the group being voted on (without isLie)
-            const votingStatements: Array<{ statementNumber: number; text: string }> = [];
+            const votedGroupsList: string[] = JSON.parse(game.votedGroups || '[]');
+            const isVotingClosed = votedGroupsList.includes(game.currentVotingGroup);
+            result.votingClosed = isVotingClosed;
+
+            // Get statements (include isLie only after voting closes)
+            const votingStatements: Array<{ statementNumber: number; text: string; isLie?: boolean }> = [];
             for (let n = 1; n <= 3; n++) {
               try {
                 const s = await statementsTable.getEntity<StatementEntity>(gameId, `${game.currentVotingGroup}_${n}`);
-                votingStatements.push({ statementNumber: s.statementNumber, text: s.text });
+                const stmt: { statementNumber: number; text: string; isLie?: boolean } = {
+                  statementNumber: s.statementNumber, text: s.text,
+                };
+                if (isVotingClosed) stmt.isLie = s.isLie;
+                votingStatements.push(stmt);
               } catch (error: any) {
                 if (error.statusCode !== 404) throw error;
               }
             }
             result.currentVotingStatements = votingStatements;
 
-            // Check if player has already voted on this group
-            try {
-              await votesTable.getEntity(gameId, `${playerId}_${game.currentVotingGroup}`);
-              result.hasVoted = true;
-            } catch (error: any) {
-              if (error.statusCode === 404) result.hasVoted = false;
-              else throw error;
+            // Check if player has voted (only for non-GK, non-presenting players)
+            if (player && player.groupLetter !== game.currentVotingGroup) {
+              try {
+                const vote = await votesTable.getEntity<VoteEntity>(gameId, `${playerId}_${game.currentVotingGroup}`);
+                result.hasVoted = true;
+                if (isVotingClosed) {
+                  result.playerVoteResult = {
+                    chosenStatement: vote.chosenStatement,
+                    isCorrect: !!vote.isCorrect,
+                    pointsAwarded: vote.pointsAwarded || 0,
+                  };
+                }
+              } catch (error: any) {
+                if (error.statusCode === 404) result.hasVoted = false;
+                else throw error;
+              }
             }
 
             // Count total votes for this group

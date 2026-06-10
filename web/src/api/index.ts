@@ -120,6 +120,33 @@ export async function updateStatement(
 
 // ============ Voting ============
 
+export async function openVoting(gameId: string, letter: string): Promise<void> {
+  return apiFetch<void>(`/games/${gameId}/voting/open/${letter}`, { method: 'POST' });
+}
+
+export interface VotingCloseResult {
+  lieStatementNumber: number | null;
+  totalVotes: number;
+  correctVotes: number;
+  breakdown: { statement1: number; statement2: number; statement3: number };
+  votedGroups: string[];
+}
+
+export async function closeVoting(gameId: string, letter: string): Promise<VotingCloseResult> {
+  return apiFetch<VotingCloseResult>(`/games/${gameId}/voting/close/${letter}`, { method: 'POST' });
+}
+
+export interface VotingResults {
+  statements: Array<{ statementNumber: number; text: string; isLie: boolean }>;
+  totalVotes: number;
+  correctVotes: number;
+  breakdown: { statement1: number; statement2: number; statement3: number };
+}
+
+export async function fetchVotingResults(gameId: string, letter: string): Promise<VotingResults> {
+  return apiFetch<VotingResults>(`/games/${gameId}/voting/results/${letter}`);
+}
+
 export async function castVote(gameId: string, playerId: string, groupLetter: string, chosenStatement: number): Promise<void> {
   return apiFetch<void>(`/games/${gameId}/vote`, {
     method: 'POST',

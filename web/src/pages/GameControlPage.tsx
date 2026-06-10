@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { fetchAuthStatus, fetchGame, fetchGameState, fetchGroups, assignGroups, transitionGame, deleteGame } from '../api';
+import { fetchAuthStatus, fetchGame, fetchGameState, fetchGroups, assignGroups, transitionGame, deleteGame, openVoting, closeVoting, fetchVotingResults } from '../api';
 import type { GroupInfo } from '../api';
+import type { Game } from '../types';
 
 function LobbyView({ gameId, playerCount, players }: {
   gameId: string;
@@ -205,6 +206,205 @@ function StatementsView({ gameId, groups }: {
   );
 }
 
+function VotingView({ gameId, game, groups }: {
+  gameId: string;
+  game: Game;
+  groups: Record<string, GroupInfo>;
+}) {
+  const queryClient = useQueryClient();
+
+  const votedGroups = game.votedGroups || [];
+  const sortedLetters = Object.keys(groups).sort();
+  const unvotedGroups = sortedLetters.filter(l => !votedGroups.includes(l));
+  const allGroupsVoted = sortedLetters.length > 0 && unvotedGroups.length === 0;
+  const isVotingClosed = game.currentVotingGroup ? votedGroups.includes(game.currentVotingGroup) : false;
+  const isVotingOpen = !!game.currentVotingGroup && !isVotingClosed;
+
+  // Poll for live data during active voting (statements + vote count)
+  const { data: liveState } = useQuery({
+    queryKey: ['votingLive', gameId],
+    queryFn: () => fetchGameState(gameId, '__gk__'),
+    enabled: isVotingOpen,
+    refetchInterval: 3000,
+  });
+
+  // Fetch results after voting closes for current group
+  const { data: results } = useQuery({
+    queryKey: ['votingResults', gameId, game.currentVotingGroup],
+    queryFn: () => fetchVotingResults(gameId, game.currentVotingGroup!),
+    enabled: isVotingClosed,
+  });
+
+  const openMutation = useMutation({
+    mutationFn: (letter: string) => openVoting(gameId, letter),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['game', gameId] });
+      queryClient.invalidateQueries({ queryKey: ['votingLive', gameId] });
+    },
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: (letter: string) => closeVoting(gameId, letter),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['game', gameId] });
+    },
+  });
+
+  const transitionMutation = useMutation({
+    mutationFn: () => transitionGame(gameId, 'results'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['game', gameId] }),
+  });
+
+  // Active voting: show statements + vote count + close button
+  if (isVotingOpen) {
+    const statements = liveState?.currentVotingStatements || [];
+    const voteCount = liveState?.voteCount || 0;
+
+    return (
+      <div className="w-full max-w-4xl space-y-8">
+        <h2 className="text-4xl font-bold text-center text-blue-400">Group {game.currentVotingGroup}</h2>
+        <p className="text-gray-400 text-center text-lg">Which statement is the lie?</p>
+
+        <div className="space-y-4">
+          {statements.map(s => (
+            <div key={s.statementNumber} className="bg-gray-800 rounded-lg p-6">
+              <span className="text-gray-500 text-sm">Statement {s.statementNumber}</span>
+              <p className="text-xl mt-1">{s.text}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center space-y-4">
+          <p className="text-2xl font-mono">{voteCount} {voteCount === 1 ? 'vote' : 'votes'} cast</p>
+          <button
+            onClick={() => closeMutation.mutate(game.currentVotingGroup!)}
+            disabled={closeMutation.isPending}
+            className="px-8 py-3 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 font-semibold"
+          >
+            {closeMutation.isPending ? 'Closing...' : 'Close Voting'}
+          </button>
+          {closeMutation.isError && (
+            <p className="text-red-400 text-sm">{closeMutation.error.message}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Reveal: show statements with lie highlighted + vote breakdown
+  if (isVotingClosed && results) {
+    return (
+      <div className="w-full max-w-4xl space-y-8">
+        <h2 className="text-4xl font-bold text-center text-blue-400">Group {game.currentVotingGroup}</h2>
+        <p className="text-gray-400 text-center text-lg">The Lie Revealed</p>
+
+        <div className="space-y-4">
+          {results.statements.map(s => {
+            const key = `statement${s.statementNumber}` as keyof typeof results.breakdown;
+            const votes = results.breakdown[key];
+            return (
+              <div key={s.statementNumber} className={`rounded-lg p-6 ${
+                s.isLie ? 'bg-red-900/40 border-2 border-red-500' : 'bg-gray-800'
+              }`}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-gray-500 text-sm">Statement {s.statementNumber}</span>
+                    {s.isLie && <span className="ml-2 text-red-400 text-sm font-bold">← THE LIE</span>}
+                    <p className="text-xl mt-1">{s.text}</p>
+                  </div>
+                  <span className="text-gray-400 text-lg font-mono whitespace-nowrap ml-4">{votes} votes</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="text-center space-y-2">
+          <p className="text-lg">
+            <span className="text-green-400 font-bold">{results.correctVotes}</span> / {results.totalVotes} correct
+            {results.totalVotes > 0 && (
+              <span className="text-gray-500 ml-2">
+                ({Math.round(results.correctVotes / results.totalVotes * 100)}%)
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex justify-center pt-4">
+          {allGroupsVoted ? (
+            <button
+              onClick={() => transitionMutation.mutate()}
+              disabled={transitionMutation.isPending}
+              className="px-8 py-3 rounded bg-green-600 hover:bg-green-700 disabled:opacity-50 font-semibold"
+            >
+              {transitionMutation.isPending ? 'Loading...' : 'Go to Results →'}
+            </button>
+          ) : (
+            <button
+              onClick={() => openMutation.mutate(unvotedGroups[0])}
+              disabled={openMutation.isPending}
+              className="px-8 py-3 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 font-semibold"
+            >
+              {openMutation.isPending ? 'Opening...' : `Next: Group ${unvotedGroups[0]} →`}
+            </button>
+          )}
+          {(transitionMutation.isError || openMutation.isError) && (
+            <p className="text-red-400 text-sm mt-2">
+              {(transitionMutation.error || openMutation.error)?.message}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Group picker: show all groups with status, open voting for next
+  return (
+    <div className="w-full max-w-4xl space-y-6">
+      <h2 className="text-2xl font-bold text-center">Voting Phase</h2>
+      <p className="text-gray-400 text-center">{votedGroups.length}/{sortedLetters.length} groups voted</p>
+
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        {sortedLetters.map(letter => {
+          const isVoted = votedGroups.includes(letter);
+          const isNext = !isVoted && letter === unvotedGroups[0];
+          return (
+            <button
+              key={letter}
+              onClick={() => !isVoted && openMutation.mutate(letter)}
+              disabled={isVoted || openMutation.isPending}
+              className={`p-4 rounded-lg text-center font-bold text-xl disabled:cursor-default ${
+                isVoted ? 'bg-green-900/40 text-green-400' :
+                isNext ? 'bg-blue-600 hover:bg-blue-700' :
+                'bg-gray-800 hover:bg-gray-700'
+              }`}
+            >
+              {letter}
+              {isVoted && <span className="block text-sm font-normal">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {allGroupsVoted && (
+        <div className="flex justify-center pt-4">
+          <button
+            onClick={() => transitionMutation.mutate()}
+            disabled={transitionMutation.isPending}
+            className="px-8 py-3 rounded bg-green-600 hover:bg-green-700 disabled:opacity-50 font-semibold"
+          >
+            {transitionMutation.isPending ? 'Loading...' : 'Go to Results →'}
+          </button>
+        </div>
+      )}
+
+      {openMutation.isError && (
+        <p className="text-red-400 text-center">{openMutation.error.message}</p>
+      )}
+    </div>
+  );
+}
+
 export function GameControlPage() {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -238,7 +438,7 @@ export function GameControlPage() {
   const { data: groups } = useQuery({
     queryKey: ['groups', gameId],
     queryFn: () => fetchGroups(gameId!),
-    enabled: !!gameId && (game?.status === 'grouping' || game?.status === 'statements'),
+    enabled: !!gameId && (game?.status === 'grouping' || game?.status === 'statements' || game?.status === 'voting'),
     refetchInterval: game?.status === 'statements' ? 5000 : false,
   });
 
@@ -314,11 +514,8 @@ export function GameControlPage() {
           {game.status === 'statements' && groups && (
             <StatementsView gameId={game.id} groups={groups} />
           )}
-          {game.status === 'voting' && (
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Voting Phase</h2>
-              <p className="text-gray-400">Voting controls coming in Phase 4</p>
-            </div>
+          {game.status === 'voting' && groups && (
+            <VotingView gameId={game.id} game={game} groups={groups} />
           )}
           {game.status === 'results' && (
             <div className="text-center">
