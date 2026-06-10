@@ -1,0 +1,26 @@
+{
+  "name": "one-truth-api",
+  "version": "1.0.0",
+  "description": "Azure Functions API for One Truth",
+  "main": "dist/src/functions/*.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "npm run build && func start",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.2",
+    "@azure/functions": "^4.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "azure-functions-core-tools": "^4.x",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
