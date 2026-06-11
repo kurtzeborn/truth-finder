@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Start the local development environment for One Truth.
+    Start the local development environment for Spot the Lie.
 
 .DESCRIPTION
     Uses SWA CLI with Azurite for local development.
@@ -16,7 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "`nOne Truth - Local Development Setup" -ForegroundColor Cyan
+Write-Host "`nSpot the Lie - Local Development Setup" -ForegroundColor Cyan
 Write-Host "====================================`n" -ForegroundColor Cyan
 
 # Check prerequisites

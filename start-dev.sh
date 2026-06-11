@@ -1,12 +1,12 @@
 #!/bin/bash
-# Start the local development environment for One Truth
+# Start the local development environment for Spot the Lie
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo ""
-echo "🎯 One Truth - Local Development Setup"
+echo "🎯 Spot the Lie - Local Development Setup"
 echo "========================================"
 echo ""
 

@@ -1,4 +1,4 @@
-// Smoke tests for One Truth
+// Smoke tests for Spot the Lie
 // Usage: node tests/smoke.js https://truth.k61.dev
 
 const BASE_URL = process.argv[2] || 'http://localhost:4280';
@@ -27,7 +27,7 @@ await test('Landing page loads', async () => {
   const res = await fetch(BASE_URL);
   assert(res.ok, `Status ${res.status}`);
   const html = await res.text();
-  assert(html.includes('One Truth'), 'Missing app title');
+  assert(html.includes('Spot the Lie'), 'Missing app title');
 });
 
 await test('/api/me responds', async () => {

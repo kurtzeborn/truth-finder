@@ -1,4 +1,4 @@
-// One Truth - Azure Infrastructure
+// Spot the Lie - Azure Infrastructure
 // Deploys: Azure Static Web App (Free) + Storage Account (Table Storage)
 
 targetScope = 'resourceGroup'

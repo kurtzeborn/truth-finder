@@ -1,7 +1,7 @@
 {
   "name": "one-truth-api",
   "version": "1.0.0",
-  "description": "Azure Functions API for One Truth",
+  "description": "Azure Functions API for Spot the Lie",
   "main": "dist/src/functions/*.js",
   "engines": {
     "node": ">=20.0.0"
