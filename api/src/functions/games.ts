@@ -145,7 +145,6 @@ app.http('getGame', {
         status: 200,
         jsonBody: {
           id: entity.rowKey,
-          createdBy: entity.createdBy,
           createdAt: entity.createdAt,
           status: entity.status,
           groupSize: entity.groupSize,
